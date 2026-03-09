@@ -1,0 +1,9 @@
+{
+  "name": "BorderLang",
+  "description": "Change panel and dock border color based on keyboard layout",
+  "uuid": "borderlang@jager1win",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "version": 1,
+  "url": "https://github.com/jager1win/borderlang",
+  "settings-schema": "org.gnome.shell.extensions.borderlang"
+}
