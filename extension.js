@@ -1,75 +1,66 @@
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as InputSourceManager from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 
 export default class BorderLangExtension extends Extension {
     enable() {
-        this._settings = this.getSettings();
+        // Получаем менеджер через его конструктор/синглтон
+        this._inputManager = InputSourceManager.getInputSourceManager();
         
-        // В GNOME 45-49 менеджер доступен напрямую через Main
-        this._inputManager = Main.inputSourceManager;
-
         if (this._inputManager) {
             this._changedId = this._inputManager.connect('current-source-changed', () => {
                 this._updateStyles();
             });
             
-            // Слушаем изменения настроек (толщина, радиус, цвета)
-            this._settingsId = this._settings.connect('changed', () => this._updateStyles());
-
-            // Запуск
+            // Задержка, чтобы UI успел прогрузиться
             setTimeout(() => this._updateStyles(), 500);
+            
+            console.log("BorderLang: Manager initialized via InputSourceManager");
+        } else {
+            console.log("BorderLang: ERROR - Still no manager found");
         }
     }
 
     disable() {
-        if (this._changedId) this._inputManager.disconnect(this._changedId);
-        if (this._settingsId) this._settings.disconnect(this._settingsId);
+        if (this._changedId && this._inputManager) {
+            this._inputManager.disconnect(this._changedId);
+        }
         this._clearStyles();
-        this._settings = null;
     }
 
     _updateStyles() {
-        try {
-            let config = {};
-            try {
-                config = JSON.parse(this._settings.get_string('config-json'));
-            } catch (e) {
-                console.log('BorderLang: JSON parse error, using defaults');
-                config = { 'en': '#3584e4', 'ru': '#ed333b' };
-            }
+        if (!this._inputManager) return;
+        
+        const source = this._inputManager.currentSource;
+        if (!source) return;
 
-            const width = this._settings.get_int('border-width') || 2;
-            const radius = this._settings.get_int('border-radius') || 6;
-            
-            const source = this._inputManager?.currentSource;
-            if (!source) return;
+        const isRu = source.id.includes('ru');
+        const color = isRu ? 'red' : 'blue';
+        const style = `border: 3px solid ${color} !important; border-radius: 8px;`;
 
-            const shortId = source.id.split(':').filter(x => x).find(x => x.length === 2) || source.id;
-            const color = config[shortId] || '#ffffff';
+        // 1. Панель (тут всё ок)
+        Main.panel.set_style(style);
 
-            const style = `border: ${width}px solid ${color} !important; border-radius: ${radius}px;`;
+        // 2. Dash-to-Dock - бьем по всем фронтам
+        // Ищем контейнер по ID из твоего CSS (#dashtodockContainer)
+        const dtdContainer = Main.layoutManager.dash?._container || 
+                             Main.uiGroup.get_children().find(c => c.get_name && c.get_name() === 'dashtodockContainer');
 
-            Main.panel.set_style(style);
+        if (dtdContainer) {
+            dtdContainer.set_style(style);
+        }
 
-            // Dash-to-Dock (Пробуем все известные пути сразу)
-            const dtdContainer = Main.layoutManager.dash?._container || 
-                                 Main.uiGroup.get_children().find(c => c.get_name && c.get_name() === 'dashtodockContainer');
-
-            if (dtdContainer && dtdContainer.set_style) {
-                dtdContainer.set_style(style);
-            }
-        } catch (err) {
-            console.log(`BorderLang Global Error: ${err}`);
+        // Дополнительно ищем сам внутренний Dash
+        if (Main.layoutManager.dash && Main.layoutManager.dash.set_style) {
+            Main.layoutManager.dash.set_style(style);
         }
     }
 
 
     _clearStyles() {
         Main.panel.set_style(null);
-        let dtd = Main.layoutManager.dash?._container;
-        if (!dtd) {
-            dtd = Main.uiGroup.get_children().find(c => c.get_name && c.get_name() === 'dashtodockContainer');
+        if (Main.layoutManager.dash && Main.layoutManager.dash.set_style) {
+            Main.layoutManager.dash.set_style(null);
         }
-        if (dtd && dtd.set_style) dtd.set_style(null);
     }
 }
